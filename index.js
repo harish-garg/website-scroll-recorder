@@ -19,9 +19,9 @@ function promptForUrl() {
 
 async function recordWebsiteScroll(url, options = {}) {
   const {
-    maxDuration = 100000,
-    scrollStep = 500,
-    scrollInterval = 500
+    maxDuration = 100000, // Maximum duration for scrolling (in ms)
+    scrollStep = 500, // Pixels to scroll each step
+    scrollInterval = 500 // Interval between scrolls (in ms)
   } = options;
 
   const browser = await chromium.launch();
@@ -51,43 +51,44 @@ async function recordWebsiteScroll(url, options = {}) {
 
   // Start recording
   const videoPath = path.join(__dirname, `website_recording_${Date.now()}.mp4`);
-  await saveVideo(page, videoPath);
+  const recording = saveVideo(page, videoPath);
 
-  // Scroll the page smoothly
-  const scrollResult = await page.evaluate(async ({ maxDuration, scrollStep, scrollInterval }) => {
-    const startTime = Date.now();
-    let lastHeight = document.body.scrollHeight;
-    let noChangeCount = 0;
+  try {
+    // Scroll the page smoothly
+    await page.evaluate(async ({ maxDuration, scrollStep, scrollInterval }) => {
+      const startTime = Date.now();
+      let lastHeight = document.body.scrollHeight;
+      let noChangeCount = 0;
 
-    return new Promise((resolve) => {
-      const intervalId = setInterval(() => {
-        window.scrollBy({ top: scrollStep, behavior: 'smooth' });
+      // Scroll logic
+      return new Promise((resolve) => {
+        const intervalId = setInterval(() => {
+          window.scrollBy({ top: scrollStep, behavior: 'smooth' });
 
-        const currentHeight = document.body.scrollHeight;
-        if (currentHeight === lastHeight) {
-          noChangeCount++;
-        } else {
-          noChangeCount = 0;
-        }
-        lastHeight = currentHeight;
+          const currentHeight = document.body.scrollHeight;
+          if (currentHeight === lastHeight) {
+            noChangeCount++;
+          } else {
+            noChangeCount = 0;
+          }
+          lastHeight = currentHeight;
 
-        if (noChangeCount >= 3 || Date.now() - startTime > maxDuration) {
-          clearInterval(intervalId);
-          resolve({
-            finalHeight: currentHeight,
-            scrollTime: Date.now() - startTime
-          });
-        }
-      }, scrollInterval);
-    });
-  }, { maxDuration, scrollStep, scrollInterval });
+          if (noChangeCount >= 3 || Date.now() - startTime > maxDuration) {
+            clearInterval(intervalId);
+            resolve(); // Scroll completed
+          }
+        }, scrollInterval);
+      });
+    }, { maxDuration, scrollStep, scrollInterval });
 
-  console.log(`📊 Scrolled for ${scrollResult.scrollTime}ms`);
-  console.log(`📏 Final page height: ${scrollResult.finalHeight}`);
+    // Add a small delay after scrolling for stability
+    await page.waitForTimeout(2000);
+  } finally {
+    // Wait briefly to ensure recording captures final page state
+    await page.waitForTimeout(1000);
+  }
 
-  // Wait briefly to capture the final state
-  await page.waitForTimeout(1000);
-
+  await recording; // Ensure video recording stops naturally
   await browser.close();
 
   return videoPath;
