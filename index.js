@@ -19,7 +19,7 @@ function promptForUrl() {
 
 async function recordWebsiteScroll(url, options = {}) {
   const {
-    maxDuration = 60000,
+    maxDuration = 100000,
     scrollStep = 500,
     scrollInterval = 500
   } = options;
@@ -28,31 +28,32 @@ async function recordWebsiteScroll(url, options = {}) {
   const context = await browser.newContext();
   const page = await context.newPage();
 
-  // Increase default timeout
   page.setDefaultTimeout(60000);
 
-  // Save video in current directory with timestamp
-  const videoPath = path.join(__dirname, `website_recording_${Date.now()}.mp4`);
-  await saveVideo(page, videoPath);
-
-  // Navigate to URL with longer wait and multiple load strategies
+  // Navigate to the URL
   await page.goto(url, { 
     waitUntil: 'networkidle', 
     timeout: 60000 
   });
 
-  // Additional wait for page to render completely
+  // Wait for the page to fully load
   await page.waitForLoadState('load');
-  await page.waitForLoadState('networkidle');
 
-  // Optional: wait for a specific element that indicates page is fully loaded
+  // Ensure the page visually stabilizes
+  await page.waitForTimeout(2000);
+
+  // Wait for a key element to confirm rendering
   try {
     await page.waitForSelector('body', { state: 'visible', timeout: 10000 });
   } catch (error) {
     console.log('Could not wait for body selector, proceeding anyway');
   }
 
-  // Scroll functionality
+  // Start recording
+  const videoPath = path.join(__dirname, `website_recording_${Date.now()}.mp4`);
+  await saveVideo(page, videoPath);
+
+  // Scroll the page smoothly
   const scrollResult = await page.evaluate(async ({ maxDuration, scrollStep, scrollInterval }) => {
     const startTime = Date.now();
     let lastHeight = document.body.scrollHeight;
@@ -61,7 +62,7 @@ async function recordWebsiteScroll(url, options = {}) {
     return new Promise((resolve) => {
       const intervalId = setInterval(() => {
         window.scrollBy({ top: scrollStep, behavior: 'smooth' });
-       
+
         const currentHeight = document.body.scrollHeight;
         if (currentHeight === lastHeight) {
           noChangeCount++;
@@ -81,14 +82,12 @@ async function recordWebsiteScroll(url, options = {}) {
     });
   }, { maxDuration, scrollStep, scrollInterval });
 
-  // Wait for the scroll to complete or timeout
   console.log(`📊 Scrolled for ${scrollResult.scrollTime}ms`);
   console.log(`📏 Final page height: ${scrollResult.finalHeight}`);
 
-  // Wait a moment to ensure video is fully captured
+  // Wait briefly to capture the final state
   await page.waitForTimeout(1000);
 
-  // Close browser
   await browser.close();
 
   return videoPath;
